@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Redeem Store</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="logo">REDEEM<span>STORE</span></div>
+  <div class="tag">Instant digital delivery</div>
+</header>
+
+<main>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">DIGITAL GOODS</p>
+      <h1>Choose your product.<br><span>Get your code instantly.</span></h1>
+      <p>Select a product and one of its three code types, then complete payment.</p>
+    </div>
+  </section>
+  <section>
+    <h2>Products</h2>
+    <div id="products" class="grid"><p>Loading products...</p></div>
+  </section>
+  <section id="checkout" class="checkout hidden">
+    <div class="checkout-card">
+      <button class="close" onclick="closeCheckout()">×</button>
+      <p class="eyebrow">CHECKOUT</p>
+      <h2 id="selectedName"></h2>
+      <div id="selectedOption" class="selected"></div>
+      <button id="payBtn" class="pay" onclick="pay()">Pay & Get Code</button>
+      <p id="status" class="status"></p>
+    </div>
+  </section>
+</main>
+
+<script>
+let selected = null;
+
+async function loadProducts(){
+  const res = await fetch('/api/products');
+  const products = await res.json();
+  const box = document.getElementById('products');
+  box.innerHTML = '';
+  products.forEach(p=>{
+    const card=document.createElement('article');
+    card.className='card';
+    card.innerHTML=`<div class="badge">AVAILABLE</div>
+      <h3>${escapeHtml(p.name)}</h3>
+      <p>${escapeHtml(p.description)}</p>
+      <div class="options"></div>`;
+    const options=card.querySelector('.options');
+    p.variants.forEach(v=>{
+      const b=document.createElement('button');
+      b.className='option';
+      b.disabled = !v.available;
+      b.innerHTML=`<span>${escapeHtml(v.name)}<small>${v.available ? v.available+' codes left' : 'Sold out'}</small></span><strong>₹${v.price}</strong>`;
+      b.onclick=()=>openCheckout(p,v);
+      options.appendChild(b);
+    });
+    box.appendChild(card);
+  });
+}
+function openCheckout(p,v){
+  selected=v;
+  document.getElementById('selectedName').textContent=p.name;
+  document.getElementById('selectedOption').textContent=v.name+' — ₹'+v.price;
+  document.getElementById('status').textContent='';
+  document.getElementById('checkout').classList.remove('hidden');
+}
+function closeCheckout(){document.getElementById('checkout').classList.add('hidden')}
+async function pay(){
+  const btn=document.getElementById('payBtn'), status=document.getElementById('status');
+  btn.disabled=true; status.textContent='Creating order...';
+  const r=await fetch('/api/create-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({variantId:selected.id})});
+  const data=await r.json();
+  if(!r.ok){status.textContent=data.error||'Could not create order';btn.disabled=false;return}
+  if(data.mode==='demo'){
+    status.textContent='Demo payment successful. Delivering code...';
+    const d=await fetch('/api/demo-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:data.orderId})});
+    const result=await d.json();
+    if(result.success) showCode(result.code); else status.textContent=result.error;
+    btn.disabled=false; return;
+  }
+  // Real Razorpay checkout can be added here once the public Razorpay key is configured.
+  status.textContent='Razorpay order created. Add the Razorpay checkout script and verified callback/webhook for live payments.';
+  btn.disabled=false;
+}
+function showCode(code){
+  document.querySelector('.checkout-card').innerHTML=
+    `<p class="eyebrow">PAYMENT SUCCESSFUL</p><h2>Your Redeem Code</h2>
+     <div class="code">${escapeHtml(code)}</div>
+     <p class="status">Save this code somewhere safe.</p>
+     <button class="pay" onclick="closeCheckout()">Done</button>`;
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+loadProducts();
+</script>
+</body>
+</html>
